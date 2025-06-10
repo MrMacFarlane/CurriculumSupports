@@ -1,0 +1,155 @@
+// Mortgage Scenario Generator Web App using HTML, CSS, and JavaScript <br>
+// M. MacFarlane (2025)
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mortgage Scenario Generator</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 40px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 800px;
+            margin: auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            text-align: center;
+        }
+        h2 {
+            margin-top: 20px;
+            color: #333;
+        }
+        button {
+            display: block;
+            margin: 20px auto;
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+        .result {
+            margin-top: 20px;
+        }
+        .result p {
+            margin: 5px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Mortgage Scenario Generator</h1>
+        <button onclick="generateScenario()">Generate Scenario</button>
+        <div class="result" id="result"></div>
+    </div>
+
+    <script>
+        function generateScenario() {
+            function calculateIncomeForGDSR(annualHousingCosts, minGDSR, maxGDSR) {
+                const minIncome = annualHousingCosts / (maxGDSR / 100);
+                const maxIncome = annualHousingCosts / (minGDSR / 100);
+                return getRandomInt(minIncome, maxIncome);
+            }
+            const purchasePrice = getRandomInt(200, 1000) * 1000;
+            const downPaymentPercent = getRandomChoice([5, 10, 15, 20]);
+            const downPaymentValue = purchasePrice * (downPaymentPercent / 100);
+            const amortizationPeriodYears = getRandomChoice([5, 10, 15, 20, 25]);
+            const annualRate = getRandomChoice([4.00, 4.25, 4.50, 4.75, 5.00, 5.25, 5.50, 5.75, 6.00, 6.25, 6.50, 6.75, 7.00, 7.25, 7.50, 7.75, 8.00]).toFixed(2);
+            const monthlyHeatingCost = getRandomInt(50, 300);
+            const propertyTaxAmount = (purchasePrice * getRandomFloat(0.005, 0.02)).toFixed(2);
+            const millRate = getRandomFloat(5, 15).toFixed(2);
+            const frontage = getRandomInt(30, 100);
+            const portionedAssessment = (purchasePrice * getRandomFloat(0.5, 1.0)).toFixed(2);
+            const municipalTaxes = ((portionedAssessment / 1000) * millRate).toFixed(2);
+            
+            const mortgageStartingAmount = purchasePrice - downPaymentValue;
+            const paymentFactor = 5.98; // Placeholder value for payment calculation
+            const monthlyPayment = (paymentFactor * mortgageStartingAmount / 1000).toFixed(2);
+            const totalInterestPaid = (monthlyPayment * amortizationPeriodYears * 12 - mortgageStartingAmount).toFixed(2);
+            const annualHousingCosts = (monthlyPayment * 12 + monthlyHeatingCost * 12 + parseFloat(propertyTaxAmount) + parseFloat(municipalTaxes));
+            const purchaserAnnualIncome = calculateIncomeForGDSR(annualHousingCosts, 5, 45);
+            const gdsr = ((annualHousingCosts / purchaserAnnualIncome) * 100).toFixed(2);
+
+            displayResults({
+                'Purchase Price': formatCurrency(purchasePrice),
+                'Down Payment %': `${downPaymentPercent}%`,
+                'Down Payment $': formatCurrency(downPaymentValue),
+                'Amortization Period': `${amortizationPeriodYears} years`,
+                'Annual Rate': `${annualRate}%`,
+                'Monthly Payment': formatCurrency(monthlyPayment),
+                'Mortgage Starting Amount': formatCurrency(mortgageStartingAmount),
+                'Total Interest Paid': formatCurrency(totalInterestPaid),
+                'Monthly Heating Cost': formatCurrency(monthlyHeatingCost),
+                'Property Tax Amount': formatCurrency(propertyTaxAmount),
+                'Municipal Taxes': formatCurrency(municipalTaxes),
+                'Mill Rate': `${millRate}`,
+                'Frontage': `${frontage} ft`,
+                'Portioned Assessment': formatCurrency(portionedAssessment),
+                'Purchaser Annual Income': formatCurrency(purchaserAnnualIncome),
+                'GDSR': `${gdsr}%`
+            });
+        }
+
+        function displayResults(data) {
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = '';
+            for (const key in data) {
+                resultDiv.innerHTML += `<p><strong>${key}:</strong> ${data[key]}</p>`;
+            }
+        }
+
+        function getRandomInt(min, max) {
+            return Math.floor(Math.random() * (max - min + 1)) + min;
+        }
+
+        function getRandomFloat(min, max) {
+            return Math.random() * (max - min) + min;
+        }
+
+        function getRandomChoice(choices) {
+            return choices[Math.floor(Math.random() * choices.length)];
+        }
+
+        function formatCurrency(value) {
+            return `$${parseFloat(value).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+        }
+    </script>
+    <div class="container">
+        <h2>Mortgage Payment Lookup Table</h2>
+        <table border="1" style="width: 100%; text-align: center;">
+            <tr>
+                <th>Interest Rate (%)</th>
+                <th>5 Years</th>
+                <th>10 Years</th>
+                <th>15 Years</th>
+                <th>20 Years</th>
+                <th>25 Years</th>
+            </tr>
+            <tr><td>4.00</td><td>18.40</td><td>10.11</td><td>7.38</td><td>6.04</td><td>5.26</td></tr>
+            <tr><td>4.25</td><td>18.51</td><td>10.23</td><td>7.50</td><td>6.17</td><td>5.40</td></tr>
+            <tr><td>4.50</td><td>18.62</td><td>10.34</td><td>7.63</td><td>6.30</td><td>5.53</td></tr>
+            <tr><td>4.75</td><td>18.74</td><td>10.46</td><td>7.75</td><td>6.44</td><td>5.67</td></tr>
+            <tr><td>5.00</td><td>18.85</td><td>10.58</td><td>7.88</td><td>6.57</td><td>5.82</td></tr>
+            <tr><td>5.25</td><td>18.96</td><td>10.70</td><td>8.01</td><td>6.71</td><td>5.96</td></tr>
+            <tr><td>5.50</td><td>19.07</td><td>10.82</td><td>8.14</td><td>6.84</td><td>6.10</td></tr>
+            <tr><td>5.75</td><td>19.19</td><td>10.94</td><td>8.27</td><td>6.98</td><td>6.25</td></tr>
+            <tr><td>6.00</td><td>19.30</td><td>11.07</td><td>8.40</td><td>7.12</td><td>6.40</td></tr>
+            <tr><td>6.25</td><td>19.41</td><td>11.19</td><td>8.53</td><td>7.26</td><td>6.55</td></tr>
+            <tr><td>6.50</td><td>19.53</td><td>11.31</td><td>8.66</td><td>7.41</td><td>6.70</td></tr>
+            <tr><td>6.75</td><td>19.64</td><td>11.43</td><td>8.80</td><td>7.55</td><td>6.85</td></tr>
+            <tr><td>7.00</td><td>19.75</td><td>11.56</td><td>8.93</td><td>7.70</td><td>7.00</td></tr>
+            <tr><td>7.25</td><td>19.87</td><td>11.68</td><td>9.07</td><td>7.84</td><td>7.16</td></tr>
+            <tr><td>7.50</td><td>19.98</td><td>11.81</td><td>9.21</td><td>7.99</td><td>7.32</td></tr>
+            <tr><td>7.75</td><td>20.10</td><td>11.94</td><td>9.34</td><td>8.13</td><td>7.47</td></tr>
+            <tr><td>8.00</td><td>20.21</td><td>12.06</td><td>9.48</td><td>8.28</td><td>7.63</td></tr>
+        </table>
+    </div>
+</body>
+</html>
