@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <!-- Include Decimal.js for precise rounding -->
+  <script src="https://cdn.jsdelivr.net/npm/decimal.js@10.4.3/decimal.min.js"></script>
+  <meta charset="UTF-8">
+  <title>Rounding Prediction Tool</title>
+  <style>
+    body { font-family: sans-serif; text-align: center; }
+    canvas { border: 1px solid #ccc; background-color: #f0f0f0; display: block; margin: 20px auto; }
+    #number-display { font-size: 24px; margin: 8px 0; }
+    #instruction-display { font-size: 18px; margin: 10px 0; }
+    #user-value { font-size: 16px; margin-top: 6px; }
+    input, button { margin: 6px 4px; padding: 8px 12px; font-size: 16px; }
+    #roundInput, #checkBtn, #nextBtn { display: none; }
+    #control-panel { margin-top: 20px; font-size: 16px; }
+    #control-panel label { margin-right: 15px; }
+  </style>
+</head>
+<body>
+
+<canvas id="roundCanvas" width="800" height="300"></canvas>
+<div id="number-display"></div>
+<div id="instruction-display"></div>
+<div id="user-value">Your arrow value: —</div>
+<button id="lockBtn">Lock In</button>
+<input type="text" id="roundInput" placeholder="Enter rounded value">
+<button id="checkBtn">Check Answer</button>
+<button id="nextBtn">Next</button>
+
+<div id="control-panel">
+  <label><input type="checkbox" id="toggle-slopes" checked> Show Slopes</label>
+  <label><input type="checkbox" id="toggle-half-ticks" checked> Show Half-Interval Ticks</label>
+  <label><input type="checkbox" id="toggle-arrow-value" checked> Show Arrow Value</label>
+</div>
+
+<script>
+const canvas = document.getElementById("roundCanvas");
+const ctx = canvas.getContext("2d");
+const numberDisplay = document.getElementById("number-display");
+const instructionDisplay = document.getElementById("instruction-display");
+const userValueDisplay = document.getElementById("user-value");
+const lockBtn = document.getElementById("lockBtn");
+const roundInput = document.getElementById("roundInput");
+const checkBtn = document.getElementById("checkBtn");
+const nextBtn = document.getElementById("nextBtn");
+
+const toggleSlopes = document.getElementById("toggle-slopes");
+const toggleHalfTicks = document.getElementById("toggle-half-ticks");
+const toggleArrowValue = document.getElementById("toggle-arrow-value");
+
+const canvasWidth = canvas.width;
+const canvasHeight = canvas.height;
+const baselineY = 200;
+
+// === CONFIG ===
+const maxValue = 100;
+const roundingFactor = 0.1;
+const intervalsToShow = 4;
+const minorTickStep = roundingFactor / 10;
+const halfTickHeight = 10;
+const majorTickAbove = 15;
+const majorTickBelow = 5;
+const majorTickWidth = 3;
+const halfTickWidth = 1.5;
+const roundingDecimals = Math.round(Math.abs(Math.log10(roundingFactor)));
+
+let rangeMin, rangeMax, startValue, arrowX;
+let startDisplayDecimals;
+let slopesEnabled = false;
+let slopeProgress = 0;
+let slopeAnim;
+let showSlopes = true;
+let showHalfTicks = true;
+let showArrowValue = true;
+
+// Generate the range and starting value:
+// 1. Choose rangeMin as a random multiple of roundingFactor so the major ticks align (e.g., x.x0)
+// 2. Define rangeMax = rangeMin + intervalsToShow * roundingFactor
+// 3. Set innerMin/innerMax one roundingFactor inside the ends to avoid edge placement
+// 4. Pick startValue as a random step within innerMin..innerMax at increments of minorTickStep
+function initRound() {
+  const maxStart = maxValue - intervalsToShow * roundingFactor;
+  const steps = Math.floor(maxStart / roundingFactor);
+  const stepIndex = Math.floor(Math.random() * (steps + 1));
+  rangeMin = stepIndex * roundingFactor;
+  rangeMax = rangeMin + intervalsToShow * roundingFactor;
+  const innerMin = rangeMin + roundingFactor;
+  const innerMax = rangeMax - roundingFactor;
+  const stepCount = Math.floor((innerMax - innerMin) / minorTickStep);
+  startValue = +(innerMin + Math.floor(Math.random() * stepCount) * minorTickStep).toFixed(4);
+  const targetDecimals = Math.round(Math.abs(Math.log10(roundingFactor)));
+  startDisplayDecimals = targetDecimals + 1;
+
+  slopesEnabled = false;
+  slopeProgress = 0;
+  clearInterval(slopeAnim);
+
+  roundInput.style.display = 'none';
+  checkBtn.style.display = 'none';
+  nextBtn.style.display = 'none';
+  roundInput.value = '';
+  instructionDisplay.textContent = `Drag the arrow to match the number, then click "Lock In".`;
+  numberDisplay.textContent = `Number: ${startValue.toFixed(startDisplayDecimals)}`;
+  arrowX = valueToX((rangeMin + rangeMax)/2);
+  drawScene();
+}
+
+const padding = 50;
+function valueToX(val) {
+  return padding + (val - rangeMin)/(rangeMax - rangeMin)*(canvasWidth - 2*padding);
+}
+function xToValue(x) {
+  const cX = Math.max(padding, Math.min(canvasWidth-padding, x));
+  const pct = (cX-padding)/(canvasWidth-2*padding);
+  const raw = rangeMin + pct*(rangeMax-rangeMin);
+  return Math.round(raw/minorTickStep)*minorTickStep;
+}
+
+function drawNumberLine() {
+  // baseline
+  ctx.strokeStyle = "#000";
+  ctx.lineWidth = 0.5;
+  ctx.beginPath();
+  ctx.moveTo(valueToX(rangeMin), baselineY);
+  ctx.lineTo(valueToX(rangeMax), baselineY);
+  ctx.stroke();
+
+  // ticks using index-based logic to avoid fp issues
+  ctx.font = "16px sans-serif";
+  ctx.fillStyle = "#000";
+  // total minor steps across intervalsToShow major intervals
+  const totalSteps = intervalsToShow * 10;
+  for (let i = 0; i <= totalSteps; i++) {
+    const v = rangeMin + i * minorTickStep;
+    const x = valueToX(v);
+    if (i % 10 === 0) {
+      // major tick
+      ctx.lineWidth = majorTickWidth;
+      ctx.beginPath();
+      ctx.moveTo(x, baselineY - majorTickAbove);
+      ctx.lineTo(x, baselineY + majorTickBelow);
+      ctx.stroke();
+      ctx.fillText(v.toFixed(roundingDecimals), x - 14, baselineY + majorTickBelow + 18);
+    } else if (showHalfTicks && i % 10 === 5) {
+      // half-interval tick
+      ctx.lineWidth = halfTickWidth;
+      ctx.beginPath();
+      ctx.moveTo(x, baselineY - halfTickHeight);
+      ctx.lineTo(x, baselineY + halfTickHeight);
+      ctx.stroke();
+    } else {
+      // minor tick
+      ctx.lineWidth = 0.5;
+      ctx.beginPath();
+      ctx.moveTo(x, baselineY - 5);
+      ctx.lineTo(x, baselineY + 5);
+      ctx.stroke();
+    }
+  }
+}
+
+function drawSlopes() {
+  if (!showSlopes) return;
+  const halfSpacing = roundingFactor/2;
+  const peakOffset = slopeProgress * halfTickHeight;
+  ctx.strokeStyle = "blue";
+  ctx.lineWidth = 2;
+  for (let v=rangeMin; v<rangeMax; v+=roundingFactor) {
+    const leftX = valueToX(v);
+    const peakX = valueToX(v + halfSpacing);
+    const rightX = valueToX(v + roundingFactor);
+    ctx.beginPath();
+    ctx.moveTo(leftX, baselineY);
+    ctx.lineTo(peakX, baselineY - peakOffset);
+    ctx.lineTo(rightX, baselineY);
+    ctx.stroke();
+  }
+}
+
+function drawArrow(x) {
+  const headY = baselineY - majorTickAbove - 7;
+  const tailY = headY - (majorTickAbove + 10);
+  ctx.beginPath();
+  ctx.moveTo(x, tailY);
+  ctx.lineTo(x, headY);
+  ctx.strokeStyle = "green";
+  ctx.lineWidth = 4;
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(x - 8, headY - 5);
+  ctx.lineTo(x, headY);
+  ctx.lineTo(x + 8, headY - 5);
+  ctx.fillStyle = "green";
+  ctx.fill();
+}
+
+function drawScene() {
+  ctx.clearRect(0,0,canvasWidth,canvasHeight);
+  drawNumberLine();
+  if (slopesEnabled) drawSlopes();
+  drawArrow(arrowX);
+  userValueDisplay.style.display = showArrowValue ? 'block' : 'none';
+}
+
+let dragging = false;
+canvas.addEventListener("mousedown", e => {
+  const mX = e.clientX - canvas.getBoundingClientRect().left;
+  if (Math.abs(mX - arrowX) < 10) dragging = true;
+});
+canvas.addEventListener("mouseup", () => dragging = false);
+canvas.addEventListener("mouseleave", () => dragging = false);
+canvas.addEventListener("mousemove", e => {
+  if (!dragging) return;
+  const mX = e.clientX - canvas.getBoundingClientRect().left;
+  arrowX = Math.max(padding, Math.min(canvasWidth - padding, mX));
+  const val = xToValue(arrowX);
+  userValueDisplay.textContent = `Your arrow value: ${val.toFixed(startDisplayDecimals)}`;
+  arrowX = valueToX(val);
+  drawScene();
+});
+
+lockBtn.addEventListener("click", () => {
+  const userVal = xToValue(arrowX).toFixed(startDisplayDecimals);
+  if (userVal === startValue.toFixed(startDisplayDecimals)) {
+    slopesEnabled = true;
+    slopeProgress = 0;
+    slopeAnim = setInterval(() => {
+      slopeProgress += 0.05;
+      if (slopeProgress >= 1) { slopeProgress = 1; clearInterval(slopeAnim); }
+      drawScene();
+    }, 30);
+    roundInput.style.display = 'inline-block';
+    checkBtn.style.display = 'inline-block';
+    const placeName = {1:"ones",0.1:"tenths",0.01:"hundredths",0.001:"thousandths"}[roundingFactor];
+    instructionDisplay.textContent = `✅ Correct! Now enter the rounded value at the nearest ${placeName}.`;
+  } else {
+    instructionDisplay.textContent = `❌ Not quite. Try matching ${startValue.toFixed(startDisplayDecimals)}.`;
+  }
+});
+
+// Check Answer logic:
+// 1. Parse user input as float
+// 2. Compute the nearest rounding step index: round((startValue - rangeMin) / roundingFactor)
+// 3. Reconstruct correctNum = rangeMin + stepIndex * roundingFactor
+// 4. Compare userRound.toFixed(roundingDecimals) to correctNum.toFixed(roundingDecimals)
+checkBtn.addEventListener("click", () => {
+  const userNumDec = new Decimal(roundInput.value);
+  const decStart = new Decimal(startValue);
+  const decMin = new Decimal(rangeMin);
+  const decStep = new Decimal(roundingFactor);
+  const rawIndex = decStart.minus(decMin).div(decStep);
+  const stepIndex = rawIndex.plus(0.5).floor();
+  const correctNum = decMin.plus(stepIndex.times(decStep));
+  const userRound = userNumDec.toFixed(roundingDecimals);
+  const correctRound = correctNum.toFixed(roundingDecimals);
+  if (userRound === correctRound) {
+    instructionDisplay.textContent = `🎉 Correct! ${startValue.toFixed(startDisplayDecimals)} rounds to ${correctRound}.`;
+    animateBall();
+    nextBtn.style.display = 'inline-block';
+  } else {
+    instructionDisplay.textContent = `❌ ${roundInput.value} is incorrect. Try again.`;
+  }
+});
+
+nextBtn.addEventListener("click", () => {
+  slopesEnabled = false;
+  slopeProgress = 0;
+  clearInterval(slopeAnim);
+  initRound();
+});
+
+// Control panel handlers
+toggleSlopes.addEventListener('change', () => { showSlopes = toggleSlopes.checked; drawScene(); });
+toggleHalfTicks.addEventListener('change', () => { showHalfTicks = toggleHalfTicks.checked; drawScene(); });
+toggleArrowValue.addEventListener('change', () => { showArrowValue = toggleArrowValue.checked; drawScene(); });
+
+function animateBall() {
+  const ballXInit = valueToX(startValue);
+  const intervalStart = Math.floor((startValue - rangeMin) / roundingFactor) * roundingFactor + rangeMin;
+  const leftX = valueToX(intervalStart);
+  const rightX = valueToX(intervalStart + roundingFactor);
+  const peakX = valueToX(intervalStart + roundingFactor / 2);
+  let ballX = ballXInit;
+  let ballY = baselineY - majorTickAbove - 7;
+  let rolled = false;
+  const dropSpeed = 5;
+  const rollSpeed = 3;
+  function getSlopeY(x) {
+    if (x < peakX) {
+      const r = (x - leftX) / (peakX - leftX);
+      return baselineY - halfTickHeight * r;
+    } else {
+      const r = (rightX - x) / (rightX - peakX);
+      return baselineY - halfTickHeight * r;
+    }
+  }
+  const anim = setInterval(() => {
+    drawScene();
+    ctx.beginPath(); ctx.arc(ballX, ballY, 8, 0, Math.PI * 2);
+    ctx.fillStyle = "red"; ctx.fill();
+    if (!rolled) {
+      const yS = getSlopeY(ballX);
+      if (ballY + dropSpeed < yS) ballY += dropSpeed;
+      else rolled = true;
+    } else {
+      if (ballX < peakX) {
+        if (ballX - rollSpeed > leftX) ballX -= rollSpeed;
+        else { ballX = leftX; clearInterval(anim); launchConfetti(); }
+      } else {
+        if (ballX + rollSpeed < rightX) ballX += rollSpeed;
+        else { ballX = rightX; clearInterval(anim); launchConfetti(); }
+      }
+      ballY = getSlopeY(ballX);
+    }
+  }, 30);
+}
+
+function launchConfetti() {
+  const colors = ["#e74c3c","#f1c40f","#2ecc71","#3498db"];
+  for (let i = 0; i < 100; i++) {
+    const x = Math.random() * canvasWidth;
+    const y = Math.random() * canvasHeight / 2;
+    ctx.fillStyle = colors[Math.floor(Math.random() * colors.length)];
+    ctx.fillRect(x, y, 5, 5);
+  }
+}
+
+initRound();
+</script>
+
+</body>
+</html>

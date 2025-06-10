@@ -1,0 +1,243 @@
+<!doctype html>
+<html itemscope itemtype="http://schema.org/" lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <title>Solving Triangles - using Law of Sine and Cosine</title>
+    <style>
+      input { width: 60px; }
+      canvas { border: 1px solid #ccc; margin-top: 20px; }
+      #steps { margin-top: 15px; font-family: monospace; }
+    </style>
+    <script>
+      function toRad(deg) { return deg * Math.PI / 180; }
+      function toDeg(rad) { return rad * 180 / Math.PI; }
+
+      function solvePass() {
+        if (!solveThirdAngle("A", "B", "C"))
+        if (!solveThirdAngle("B", "C", "A"))
+        if (!solveThirdAngle("A", "C", "B"))
+        if (!solveAAS("B", "A", "b", "a"))
+        if (!solveAAS("A", "B", "a", "b"))
+        if (!solveAAS("A", "C", "a", "c"))
+        if (!solveAAS("B", "C", "b", "c"))
+        if (!solveAAS("C", "A", "c", "a"))
+        if (!solveAAS("C", "B", "c", "b"))
+        if (!solveSSS("a", "b", "c", "A"))
+        if (!solveSSS("b", "c", "a", "B"))
+        if (!solveSSS("c", "a", "b", "C"))
+        if (!solveSAS("b", "A", "c", "a"))
+        if (!solveSAS("a", "B", "c", "b"))
+        if (!solveSSA("a", "b", "A", "B"))
+        if (!solveSSA("a", "c", "A", "C"))
+        if (!solveSSA("b", "a", "B", "A"))
+        if (!solveSSA("b", "c", "B", "C"))
+        if (!solveSSA("c", "a", "C", "A"))
+        if (!solveSSA("c", "b", "C", "B"))
+          solveSAS("a", "C", "b", "c");
+      }
+
+      function validSides() {
+        var a = document.getElementById("side_a").value.trim();
+        var b = document.getElementById("side_b").value.trim();
+        var c = document.getElementById("side_c").value.trim();
+        if (a && b && c) {
+          a = +a; b = +b; c = +c;
+          if (a + b <= c || a + c <= b || b + c <= a) return false;
+        }
+        return true;
+      }
+
+      function solve() {
+        document.getElementById("steps").innerHTML = '';
+        if (validSides()) {
+          checkedThreeAngles180 = false;
+          solvePass(); solvePass(); solvePass();
+          drawTriangle();
+        } else {
+          clearCanvas();
+          logStep('Not a valid triangle: one side ≥ sum of the others.');
+        }
+      }
+
+      function resetForm() {
+        [ 'angleA','angleB','angleC','side_a','side_b','side_c' ]
+          .forEach(id => document.getElementById(id).value = '');
+        document.getElementById("steps").innerHTML = '';
+        clearCanvas();
+      }
+
+      function drawTriangle() {
+        clearCanvas();
+        var a = +document.getElementById('side_a').value;
+        var b = +document.getElementById('side_b').value;
+        var c = +document.getElementById('side_c').value;
+        var B = +document.getElementById('angleB').value;
+        var A = +document.getElementById('angleA').value;
+
+        var e = -a * Math.sin(toRad(B));
+        var d = Math.sqrt(Math.abs(b*b - e*e));
+        if (A > 90) d = -d;
+
+        var maxNum = Math.max(c, Math.abs(d), Math.abs(e));
+        var scale = 300 / maxNum;
+        c *= scale; d *= scale; e *= scale;
+
+        xoffset = Math.max(-Math.min(c, d, 0), 0) + 30;
+        yoffset = -e + 30;
+
+        drawLine(0,0, c,0);
+        drawLine(c,0, d,e);
+        drawLine(d,e, 0,0);
+
+        ctx.font = '14pt Arial';
+        drawText("A", -20, 10);
+        drawText("B", c+10, 10);
+        drawText("C", d-5, e-10);
+
+        document.getElementById('theCanvas').style.display = 'block';
+      }
+
+      var canvas, ctx, xoffset = 200, yoffset = 330;
+      function getCanvasContext() {
+        if (!ctx) {
+          canvas = document.getElementById('theCanvas');
+          ctx = canvas.getContext('2d');
+        }
+        return ctx;
+      }
+
+      function drawLine(x1,y1,x2,y2) {
+        var ctx = getCanvasContext();
+        x1 += xoffset; y1 += yoffset;
+        x2 += xoffset; y2 += yoffset;
+        ctx.strokeStyle = 'red';
+        ctx.beginPath();
+        ctx.moveTo(x1,y1);
+        ctx.lineTo(x2,y2);
+        ctx.stroke();
+      }
+
+      function drawText(txt, x1,y1) {
+        var ctx = getCanvasContext();
+        ctx.fillText(txt, x1 + xoffset, y1 + yoffset);
+      }
+
+      function clearCanvas() {
+        var ctx = getCanvasContext();
+        ctx.clearRect(0,0, canvas.width, canvas.height);
+      }
+
+      function logStep(step) {
+        var s = document.getElementById('steps');
+        s.innerHTML += `<div class="step">${step}</div>`;
+      }
+
+      var checkedThreeAngles180 = false;
+      function solveThirdAngle(n1,n2,unk) {
+        var I = document.getElementById(`angle${unk}`);
+        var v1 = document.getElementById(`angle${n1}`).value;
+        var v2 = document.getElementById(`angle${n2}`).value;
+        if (!checkedThreeAngles180 && v1 && v2 && I.value) {
+          checkedThreeAngles180 = true;
+          var sum = +v1 + +v2 + +I.value;
+          if (sum < 179.5 || sum > 180.5) { logStep(`WARNING: angles ≠180 (sum=${sum})`); return true; }
+        }
+        if (!I.value && v1 && v2) {
+          I.value = 180 - v1 - v2;
+          logStep(`${unk} = 180 - (${v1} + ${v2}) = ${I.value}`);
+          return true;
+        }
+        return false;
+      }
+
+      function solveAAS(n1,n2,s1,us) {
+        var U = document.getElementById(`side_${us}`);
+        if (!U.value) {
+          var ang1 = document.getElementById(`angle${n1}`).value;
+          var ang2 = document.getElementById(`angle${n2}`).value;
+          var sv  = document.getElementById(`side_${s1}`).value;
+          if (ang1 && ang2 && sv) {
+            U.value = sv / Math.sin(toRad(ang1)) * Math.sin(toRad(ang2));
+            logStep(`Law of Sines: ${us} = (${sv}/sin ${ang1})·sin ${ang2} = ${U.value}`);
+            return true;
+          }
+        }
+        return false;
+      }
+
+      function solveSSS(s1,s2,s3,ua) {
+        var U = document.getElementById(`angle${ua}`);
+        if (!U.value) {
+          var v1 = +document.getElementById(`side_${s1}`).value;
+          var v2 = +document.getElementById(`side_${s2}`).value;
+          var v3 = +document.getElementById(`side_${s3}`).value;
+          if (v1 && v2 && v3) {
+            var r = (v2*v2 + v3*v3 - v1*v1)/(2*v2*v3);
+            U.value = toDeg(Math.acos(r));
+            logStep(`Law of Cosines: angle ${ua} = acos(${r}) = ${U.value}`);
+            return true;
+          }
+        }
+        return false;
+      }
+
+      function solveSSA(s1,s2,a1,ua) {
+        var U = document.getElementById(`angle${ua}`);
+        if (!U.value) {
+          var sv1 = +document.getElementById(`side_${s1}`).value;
+          var sv2 = +document.getElementById(`side_${s2}`).value;
+          var av  = +document.getElementById(`angle${a1}`).value;
+          if (sv1 && sv2 && av) {
+            var r = sv2 * Math.sin(toRad(av)) / sv1;
+            U.value = toDeg(Math.asin(r));
+            var warn = '';
+            if (+U.value + av < 180) warn = ` (alt: ${180 - U.value})`;
+            logStep(`SSA: angle ${ua} = asin(${r})${warn}`);
+            return true;
+          }
+        }
+        return false;
+      }
+
+      function solveSAS(s1,a3,s2,us) {
+        var U = document.getElementById(`side_${us}`);
+        if (!U.value) {
+          var v1 = +document.getElementById(`side_${s1}`).value;
+          var v2 = +document.getElementById(`side_${s2}`).value;
+          var av = +document.getElementById(`angle${a3}`).value;
+          if (v1 && v2 && av) {
+            U.value = Math.sqrt(v1*v1 + v2*v2 - 2*v1*v2*Math.cos(toRad(av)));
+            logStep(`SAS: ${us} = sqrt(${v1}²+${v2}²–2·${v1}·${v2}·cos${av}) = ${U.value}`);
+            return true;
+          }
+        }
+        return false;
+      }
+
+      function cb() {
+        var filled = ['angleA','angleB','angleC','side_a','side_b','side_c']
+          .filter(id => !!document.getElementById(id).value.trim());
+        document.getElementById('solve').disabled = filled.length < 3;
+      }
+    </script>
+  </head>
+
+  <body>
+    <h1>Solving Triangles</h1>
+    <div>
+      Angles: A <input id="angleA" type="number" onchange="cb()" onkeyup="cb()" />
+             B <input id="angleB" type="number" onchange="cb()" onkeyup="cb()" />
+             C <input id="angleC" type="number" onchange="cb()" onkeyup="cb()" />
+    </div>
+    <div>
+      Sides: a <input id="side_a" type="number" onchange="cb()" onkeyup="cb()" />
+             b <input id="side_b" type="number" onchange="cb()" onkeyup="cb()" />
+             c <input id="side_c" type="number" onchange="cb()" onkeyup="cb()" />
+    </div>
+    <button id="solve" onclick="solve()" disabled>Solve</button>
+    <button onclick="resetForm()">Reset</button>
+
+    <div id="steps"></div>
+    <canvas id="theCanvas" width="600" height="500"></canvas>
+  </body>
+</html>

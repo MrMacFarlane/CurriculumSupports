@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Numberline Rounding Visualization</title>
+  <script src="https://cdn.jsdelivr.net/npm/decimal.js@10.4.3/decimal.min.js"></script>
+  <style>
+    body { font-family: sans-serif; text-align: center; }
+    canvas { border: 1px solid #ccc; background: #f0f0f0; margin: 20px auto; display: block; }
+    #number-display, #instruction-display { margin: 10px 0; }
+    #control-panel { margin-top: 20px; font-size: 16px; }
+    #control-panel label { margin-right: 15px; vertical-align: middle; }
+    input, select, button { margin: 6px 4px; padding: 8px 12px; font-size: 16px; }
+  </style>
+</head>
+<body>
+
+<div id="control-panel">
+  <label>Min place:
+    <select id="min-place">
+      <option value="0.001">Thousandths</option>
+      <option value="0.01">Hundredths</option>
+      <option value="0.1">Tenths</option>
+      <option value="1" selected>Ones</option>
+    </select>
+  </label>
+  <label>Max place:
+    <select id="max-place">
+      <option value="1">Ones</option>
+      <option value="10">Tens</option>
+      <option value="100">Hundreds</option>
+    </select>
+  </label>
+  <label>Mode:
+    <select id="mode">
+      <option value="fixed">Fixed</option>
+      <option value="random">Random</option>
+    </select>
+  </label>
+  <div id="fixed-radio"></div>
+  <button id="startBtn">Start</button>
+</div>
+<canvas id="roundCanvas" width="800" height="300" style="display:none;"></canvas>
+<div id="view-controls" style="text-align:center; margin:10px 0;">
+  <label><input type="checkbox" id="toggle-slopes" checked> Show Slopes</label>
+  <label><input type="checkbox" id="toggle-half" checked> Show Half Ticks</label>
+  <label><input type="checkbox" id="toggle-value" checked> Show Arrow Value</label>
+</div>
+<div id="number-display"></div>
+<div id="instruction-display"></div>
+<div id="arrow-value" style="display:none; font-size:16px; margin:6px 0;"></div> 
+<input type="text" id="roundInput" placeholder="Enter rounded value" style="display:none;">
+<button id="checkBtn" style="display:none;">Check Answer</button>
+<button id="startOverBtn" style="display:none;">Start Over</button>
+<button id="lockBtn" style="display:none;">Check Arrow Placement</button>
+
+<script>
+// Elements
+const panel = document.getElementById('control-panel');
+const startBtn = document.getElementById('startBtn');
+const startOverBtn = document.getElementById('startOverBtn');
+const minPlace = document.getElementById('min-place');
+const maxPlace = document.getElementById('max-place');
+const modeSelect = document.getElementById('mode');
+const fixedRadio = document.getElementById('fixed-radio');
+const toggleSlopes = document.getElementById('toggle-slopes');
+const toggleHalf = document.getElementById('toggle-half');
+const toggleValue = document.getElementById('toggle-value');
+const canvas = document.getElementById('roundCanvas');
+const ctx = canvas.getContext('2d');
+const numberDisplay = document.getElementById('number-display');
+const instructionDisplay = document.getElementById('instruction-display');
+const roundInput = document.getElementById('roundInput');
+const lockBtn = document.getElementById('lockBtn');
+const checkBtn = document.getElementById('checkBtn');
+
+// Config
+const padding = 50;
+const baselineY = 200;
+const intervalsToShow = 4;
+const majorTickAbove = 15;
+const majorTickBelow = 5;
+const halfTickHeight = 10;
+
+let roundingFactor, roundingDecimals, displayDecimals, minorStep;
+let rangeMin, rangeMax, startValue, arrowX;
+let slopesEnabled = false;
+let showSlopes = true, showHalf = true, showValue = true;
+let slopeProg = 0, slopeAnim;
+
+// Populate factor radios
+function updateRadios() {
+  fixedRadio.innerHTML = '';
+  const min = parseFloat(minPlace.value);
+  const max = parseFloat(maxPlace.value);
+  let f = min;
+  while (f <= max) {
+    const lbl = document.createElement('label');
+    const inp = document.createElement('input'); inp.type='radio'; inp.name='factor'; inp.value=f;
+    lbl.append(inp, ' '+f);
+    fixedRadio.append(lbl);
+    f *= 10;
+  }
+  fixedRadio.firstChild.querySelector('input').checked = true;
+}
+modeSelect.onchange = () => { fixedRadio.style.display = modeSelect.value==='fixed'? 'inline':'none'; };
+minPlace.onchange = updateRadios;
+maxPlace.onchange = updateRadios;
+updateRadios();
+
+function startExercise() {
+  panel.style.display='none';
+  canvas.style.display='block';
+  // determine roundingFactor
+  if (modeSelect.value==='fixed') {
+    roundingFactor = parseFloat(document.querySelector('input[name="factor"]:checked').value);
+  } else {
+    const all = [...document.querySelectorAll('input[name="factor"]')];
+    roundingFactor = parseFloat(all[Math.floor(Math.random()*all.length)].value);
+  }
+  roundingDecimals = Math.round(Math.abs(Math.log10(roundingFactor)));
+  displayDecimals = roundingDecimals+1;
+  minorStep = roundingFactor/10;
+  // range
+  const maxVal = parseFloat(maxPlace.value);
+  const steps = Math.floor(maxVal/roundingFactor);
+  const idx = Math.floor(Math.random()*steps);
+  rangeMin = idx*roundingFactor;
+  rangeMax = rangeMin+intervalsToShow*roundingFactor;
+  // startValue
+  const innerMin = rangeMin+roundingFactor;
+  const innerMax = rangeMax-roundingFactor;
+  const cnt = Math.floor((innerMax-innerMin)/minorStep);
+  startValue = innerMin + Math.floor(Math.random()*cnt)*minorStep;
+
+  // display starting number and initial instruction
+  numberDisplay.textContent = `Number: ${startValue.toFixed(displayDecimals)}`;
+  instructionDisplay.textContent = 'Drag the arrow to match the number, then click "Lock In".';
+
+  arrowX = valueToX((rangeMin + rangeMax) / 2);
+  draw();
+  lockBtn.style.display = 'inline-block';((rangeMin + rangeMax) / 2);
+  draw();
+  lockBtn.style.display = 'inline-block';
+
+}
+startBtn.onclick = startExercise;
+
+lockBtn.onclick = () => {
+  // Check arrow placement against startValue
+  const placedVal = xToValue(arrowX).toFixed(displayDecimals);
+  const targetVal = startValue.toFixed(displayDecimals);
+  if (placedVal === targetVal) {
+    instructionDisplay.textContent = `✅ Good job! Arrow is at ${placedVal}. Now enter the rounded value to the nearest ${roundingFactor}.`;
+    slopesEnabled = true;
+    slopeProg = 0;
+    // animate slopes rising
+    slopeAnim = setInterval(() => {
+      slopeProg += 0.05;
+      if (slopeProg >= 1) { slopeProg = 1; clearInterval(slopeAnim); }
+      draw();
+    }, 30);
+    roundInput.style.display = 'inline-block';
+    checkBtn.style.display = 'inline-block';
+    lockBtn.style.display = 'none';
+  } else {
+    instructionDisplay.textContent = `❌ Not quite. Arrow is at ${placedVal}. Try moving the arrow to ${targetVal}.`;
+    // keep lockBtn visible for another try
+  }
+};
+
+checkBtn.onclick = function() {
+  const userValDec = new Decimal(roundInput.value);
+  const decStart = new Decimal(startValue);
+  const decMin = new Decimal(rangeMin);
+  const decStep = new Decimal(roundingFactor);
+  const rawIndex = decStart.minus(decMin).div(decStep);
+  const stepIndex = rawIndex.plus(0.5).floor();
+  const correctDec = decMin.plus(stepIndex.times(decStep));
+  const userStr = userValDec.toFixed(roundingDecimals);
+  const correctStr = correctDec.toFixed(roundingDecimals);
+  if (userStr === correctStr) {
+    instructionDisplay.textContent = `🎉 Correct! ${startValue.toFixed(displayDecimals)} rounds to ${correctStr}.`;
+    checkBtn.textContent = 'New Question';
+    // repurpose button to generate new question
+    checkBtn.onclick = function() {
+      // new starting number, same range & settings
+      slopesEnabled = false;
+      slopeProg = 0;
+      clearInterval(slopeAnim);
+      // pick new startValue
+      const innerMin = rangeMin + roundingFactor;
+      const innerMax = rangeMax - roundingFactor;
+      const cnt = Math.floor((innerMax - innerMin) / minorStep);
+      startValue = innerMin + Math.floor(Math.random() * cnt) * minorStep;
+      // update displays
+      numberDisplay.textContent = `Number: ${startValue.toFixed(displayDecimals)}`;
+      instructionDisplay.textContent = 'Drag the arrow to match the number, then click "Lock In".';
+      roundInput.value = '';
+      roundInput.style.display = 'none';
+      lockBtn.style.display = 'inline-block';
+      checkBtn.textContent = 'Check Answer';
+      // reset button handler to original
+      checkBtn.onclick = arguments.callee.caller; // restore this function
+      arrowX = valueToX((rangeMin + rangeMax) / 2);
+      draw();
+    };
+  } else {
+    instructionDisplay.textContent = `❌ ${roundInput.value} is incorrect. Try again.`;
+    checkBtn.textContent = 'Try Again';
+    // keep same handler so user can try again
+  }
+};
+
+function startOver() {
+  clearInterval(slopeAnim);
+  panel.style.display='block';
+  canvas.style.display='none';
+  numberDisplay.textContent=''; instructionDisplay.textContent='';
+  roundInput.style.display='none'; checkBtn.style.display='none'; startOverBtn.style.display='none';
+}
+startOverBtn.onclick = startOver;
+
+document.getElementById('toggle-slopes').onchange = e=>{showSlopes=e.target.checked;draw();};
+document.getElementById('toggle-half').onchange = e=>{showHalf=e.target.checked;draw();};
+document.getElementById('toggle-value').onchange = e=>{showValue=e.target.checked;draw();};
+
+function valueToX(v){return padding + (v-rangeMin)/(rangeMax-rangeMin)*(canvas.width-2*padding);} 
+function drawBaseline(){ctx.strokeStyle='#000';ctx.lineWidth=0.5;ctx.beginPath();ctx.moveTo(valueToX(rangeMin),baselineY);ctx.lineTo(valueToX(rangeMax),baselineY);ctx.stroke();}
+function drawTicks(){const total=intervalsToShow*10;ctx.font='16px sans-serif';ctx.fillStyle='#000';for(let i=0;i<=total;i++){const v=rangeMin+i*minorStep,x=valueToX(v);if(i%10===0){ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(x,baselineY-majorTickAbove);ctx.lineTo(x,baselineY+majorTickBelow);ctx.stroke();ctx.fillText(v.toFixed(roundingDecimals),x-14,baselineY+majorTickBelow+18);}else if(showHalf&&i%10===5){ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(x,baselineY-halfTickHeight);ctx.lineTo(x,baselineY+halfTickHeight);ctx.stroke();}else{ctx.lineWidth=0.5;ctx.beginPath();ctx.moveTo(x,baselineY-5);ctx.lineTo(x,baselineY+5);ctx.stroke();}}}
+function drawSlopes(){if(!showSlopes)return;const half=roundingFactor/2;const peak=halfTickHeight;ctx.strokeStyle='blue';ctx.lineWidth=2;for(let v=rangeMin;v<rangeMax;v+=roundingFactor){const l=valueToX(v),p=valueToX(v+half),r=valueToX(v+roundingFactor);ctx.beginPath();ctx.moveTo(l,baselineY);ctx.lineTo(p,baselineY-peak);ctx.lineTo(r,baselineY);ctx.stroke();}}
+function drawArrow(){const headY=baselineY-majorTickAbove-7,tailY=headY-majorTickAbove-10;ctx.beginPath();ctx.moveTo(arrowX,tailY);ctx.lineTo(arrowX,headY);ctx.strokeStyle='green';ctx.lineWidth=4;ctx.stroke();ctx.beginPath();ctx.moveTo(arrowX-8,headY-5);ctx.lineTo(arrowX,headY);ctx.lineTo(arrowX+8,headY-5);ctx.fillStyle='green';ctx.fill();}
+
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  drawBaseline();
+  drawTicks();
+  drawSlopes();
+  drawArrow();
+
+  // Update arrow value display
+  const arrowValDiv = document.getElementById('arrow-value');
+  if (showValue) {
+    const currentVal = xToValue(arrowX);
+    arrowValDiv.style.display = 'block';
+    arrowValDiv.textContent = `Your arrow value: ${currentVal.toFixed(displayDecimals)}`;
+  } else {
+    arrowValDiv.style.display = 'none';
+  }
+}
+
+// Arrow dragging functionality
+let dragging = false;
+
+// Convert canvas x to nearest valid value on number line
+function xToValue(x) {
+  const pct = (x - padding) / (canvas.width - 2 * padding);
+  const raw = rangeMin + pct * (rangeMax - rangeMin);
+  const steps = Math.round((raw - rangeMin) / minorStep);
+  return rangeMin + steps * minorStep;
+}
+
+canvas.addEventListener('mousedown', e => {
+  const rect = canvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  if (Math.abs(mx - arrowX) < 10) {
+    dragging = true;
+  }
+});
+canvas.addEventListener('mouseup', () => { dragging = false; });
+canvas.addEventListener('mouseleave', () => { dragging = false; });
+canvas.addEventListener('mousemove', e => {
+  if (!dragging) return;
+  const rect = canvas.getBoundingClientRect();
+  let mx = e.clientX - rect.left;
+  mx = Math.max(padding, Math.min(canvas.width - padding, mx));
+  const val = xToValue(mx);
+  arrowX = valueToX(val);
+  draw();
+});
+</script>
+
+</body>
+</html>
